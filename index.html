@@ -1,0 +1,728 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Posterize — Découpe poster multi-pages A3</title>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0f0f1a;
+            color: #d4d4dc;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        #app { display: flex; height: 100vh; }
+
+        .sidebar {
+            width: 320px;
+            min-width: 320px;
+            background: #1a1a2e;
+            border-right: 1px solid #2a2a4a;
+            padding: 24px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            overflow-y: auto;
+        }
+
+        .sidebar h1 {
+            font-size: 22px;
+            font-weight: 700;
+            color: #fff;
+            letter-spacing: -0.5px;
+        }
+
+        .sidebar h1 span { color: #6c63ff; }
+
+        .section {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .section-title {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            color: #8888aa;
+            font-weight: 600;
+        }
+
+        .drop-zone {
+            border: 2px dashed #3a3a5a;
+            border-radius: 12px;
+            padding: 28px 16px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s;
+            background: #12122a;
+        }
+
+        .drop-zone:hover, .drop-zone.drag-over {
+            border-color: #6c63ff;
+            background: #1a1a3a;
+        }
+
+        .drop-zone svg { margin-bottom: 8px; opacity: 0.5; }
+        .drop-zone p { font-size: 13px; color: #8888aa; }
+
+        .drop-zone .filename {
+            color: #6c63ff;
+            font-weight: 600;
+            margin-top: 4px;
+            font-size: 12px;
+            word-break: break-all;
+        }
+
+        .drop-zone .dimensions {
+            font-size: 11px;
+            color: #6a6a8a;
+            margin-top: 6px;
+        }
+
+        .toggle-group {
+            display: flex;
+            background: #12122a;
+            border-radius: 8px;
+            padding: 3px;
+            gap: 3px;
+        }
+
+        .toggle-btn {
+            flex: 1;
+            padding: 8px 12px;
+            border: none;
+            background: transparent;
+            color: #8888aa;
+            font-size: 13px;
+            font-weight: 500;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .toggle-btn.active { background: #6c63ff; color: #fff; }
+
+        .control-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .control-row label { font-size: 13px; color: #aaaacc; }
+
+        .stepper {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: #12122a;
+            border-radius: 8px;
+            padding: 2px;
+        }
+
+        .stepper button {
+            width: 32px;
+            height: 32px;
+            border: none;
+            background: transparent;
+            color: #8888aa;
+            font-size: 18px;
+            cursor: pointer;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.15s;
+        }
+
+        .stepper button:hover { background: #2a2a4a; color: #fff; }
+
+        .stepper span {
+            font-size: 15px;
+            font-weight: 600;
+            min-width: 24px;
+            text-align: center;
+            color: #fff;
+        }
+
+        .grid-summary {
+            font-size: 11px;
+            color: #6a6a8a;
+            text-align: center;
+            margin-top: 2px;
+        }
+
+        .info-card {
+            background: #12122a;
+            border-radius: 10px;
+            padding: 14px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .info-row {
+            display: flex;
+            justify-content: space-between;
+            font-size: 12px;
+        }
+
+        .info-row .label { color: #8888aa; }
+
+        .info-row .value {
+            color: #d4d4dc;
+            font-weight: 600;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .info-row .value.good { color: #4ade80; }
+        .info-row .value.warn { color: #fbbf24; }
+        .info-row .value.bad  { color: #f87171; }
+
+        .btn-export {
+            width: 100%;
+            padding: 14px;
+            border: none;
+            background: #6c63ff;
+            color: #fff;
+            font-size: 14px;
+            font-weight: 600;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .btn-export:hover:not(:disabled) {
+            background: #5a52e0;
+            transform: translateY(-1px);
+        }
+
+        .btn-export:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        .preview-area {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+            background: #0f0f1a;
+            position: relative;
+        }
+
+        canvas {
+            display: block;
+            border-radius: 4px;
+        }
+
+        .empty-state {
+            text-align: center;
+            color: #4a4a6a;
+        }
+
+        .empty-state svg { margin-bottom: 16px; opacity: 0.3; }
+        .empty-state p { font-size: 15px; }
+
+        .spacer { flex: 1; }
+
+        .progress-bar {
+            width: 100%;
+            height: 4px;
+            background: #2a2a4a;
+            border-radius: 2px;
+            overflow: hidden;
+            margin-top: 8px;
+        }
+
+        .progress-bar .fill {
+            height: 100%;
+            background: #6c63ff;
+            border-radius: 2px;
+            transition: width 0.3s;
+        }
+    </style>
+</head>
+<body>
+<div id="app">
+    <aside class="sidebar">
+        <h1><span>●</span> Posterize</h1>
+
+        <!-- Image source -->
+        <div class="section">
+            <div class="section-title">Image source</div>
+            <div class="drop-zone"
+                 :class="{ 'drag-over': isDragOver }"
+                 @click="$refs.fileInput.click()"
+                 @dragover.prevent="isDragOver = true"
+                 @dragleave="isDragOver = false"
+                 @drop.prevent="handleDrop">
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/>
+                </svg>
+                <p v-if="!fileName">Cliquer ou déposer une image</p>
+                <p v-else>Image chargée</p>
+                <div v-if="fileName" class="filename">{{ fileName }}</div>
+                <div v-if="image" class="dimensions">
+                    {{ image.naturalWidth }} × {{ image.naturalHeight }} px
+                </div>
+            </div>
+            <input ref="fileInput" type="file" accept="image/*" @change="handleFile" style="display:none">
+        </div>
+
+        <!-- Orientation -->
+        <div class="section">
+            <div class="section-title">Orientation des pages A3</div>
+            <div class="toggle-group">
+                <button class="toggle-btn" :class="{ active: orientation === 'portrait' }"
+                        @click="orientation = 'portrait'">▯ Portrait</button>
+                <button class="toggle-btn" :class="{ active: orientation === 'landscape' }"
+                        @click="orientation = 'landscape'">▭ Paysage</button>
+            </div>
+        </div>
+
+        <!-- Grid -->
+        <div class="section">
+            <div class="section-title">Grille de pages</div>
+            <div class="control-row">
+                <label>Pages en largeur</label>
+                <div class="stepper">
+                    <button @click="cols = Math.max(1, cols - 1)">−</button>
+                    <span>{{ cols }}</span>
+                    <button @click="cols = Math.min(10, cols + 1)">+</button>
+                </div>
+            </div>
+            <div class="control-row">
+                <label>Pages en hauteur</label>
+                <div class="stepper">
+                    <button @click="rows = Math.max(1, rows - 1)">−</button>
+                    <span>{{ rows }}</span>
+                    <button @click="rows = Math.min(10, rows + 1)">+</button>
+                </div>
+            </div>
+            <div class="grid-summary">
+                {{ cols * rows }} page{{ cols * rows > 1 ? 's' : '' }} A3 —
+                {{ (cols * pageWidth / 10).toFixed(0) }} × {{ (rows * pageHeight / 10).toFixed(0) }} cm
+            </div>
+        </div>
+
+        <!-- Info -->
+        <div class="section" v-if="image && scaleInfo">
+            <div class="section-title">Informations d'impression</div>
+            <div class="info-card">
+                <div class="info-row">
+                    <span class="label">Taille imprimée</span>
+                    <span class="value">{{ (scaleInfo.printedW / 10).toFixed(1) }} × {{ (scaleInfo.printedH / 10).toFixed(1) }} cm</span>
+                </div>
+                <div class="info-row">
+                    <span class="label">Échelle (réf. 300 DPI)</span>
+                    <span class="value">{{ scaleInfo.scalePercent.toFixed(0) }}%</span>
+                </div>
+                <div class="info-row">
+                    <span class="label">Résolution effective</span>
+                    <span class="value" :class="dpiQuality">{{ scaleInfo.dpi.toFixed(0) }} DPI</span>
+                </div>
+                <div class="info-row">
+                    <span class="label">Qualité</span>
+                    <span class="value" :class="dpiQuality">{{ dpiLabel }}</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="spacer"></div>
+
+        <!-- Export -->
+        <div class="section">
+            <button class="btn-export" @click="exportPDF" :disabled="!image || exporting">
+                <svg v-if="!exporting" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+                    <polyline points="14 2 14 8 20 8"/>
+                    <line x1="16" y1="13" x2="8" y2="13"/>
+                    <line x1="16" y1="17" x2="8" y2="17"/>
+                </svg>
+                <span v-if="!exporting">Exporter en PDF</span>
+                <span v-else>Export en cours… {{ exportProgress }}%</span>
+            </button>
+            <div v-if="exporting" class="progress-bar">
+                <div class="fill" :style="{ width: exportProgress + '%' }"></div>
+            </div>
+        </div>
+    </aside>
+
+    <main class="preview-area" ref="previewArea">
+        <div v-if="!image" class="empty-state">
+            <svg width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="0.8">
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                <circle cx="8.5" cy="8.5" r="1.5"/>
+                <polyline points="21 15 16 10 5 21"/>
+            </svg>
+            <p>Chargez une image pour commencer</p>
+        </div>
+        <canvas v-show="image" ref="previewCanvas"></canvas>
+    </main>
+</div>
+
+<script>
+const { createApp, ref, computed, watch, nextTick, onMounted, onBeforeUnmount } = Vue;
+
+createApp({
+    setup() {
+        // --- State ---
+        const image = ref(null);
+        const fileName = ref('');
+        const orientation = ref('portrait');
+        const cols = ref(1);
+        const rows = ref(1);
+        const MARGIN = 5; // mm — marge réaliste pour impression
+        const isDragOver = ref(false);
+        const exporting = ref(false);
+        const exportProgress = ref(0);
+
+        // --- Refs ---
+        const previewCanvas = ref(null);
+        const previewArea = ref(null);
+        const fileInput = ref(null);
+
+        let currentObjectURL = null;
+
+        // --- Computed: dimensions A3 ---
+        const pageWidth  = computed(() => orientation.value === 'portrait' ? 297 : 420);
+        const pageHeight = computed(() => orientation.value === 'portrait' ? 420 : 297);
+        const printableWidth  = computed(() => pageWidth.value  - 2 * MARGIN);
+        const printableHeight = computed(() => pageHeight.value - 2 * MARGIN);
+        const totalPrintableWidth  = computed(() => cols.value * printableWidth.value);
+        const totalPrintableHeight = computed(() => rows.value * printableHeight.value);
+
+        // --- Computed: scale info ---
+        const scaleInfo = computed(() => {
+            if (!image.value) return null;
+            const img = image.value;
+            const scaleX = totalPrintableWidth.value  / img.naturalWidth;
+            const scaleY = totalPrintableHeight.value / img.naturalHeight;
+            const scale = Math.min(scaleX, scaleY); // mm per pixel
+            const printedW = img.naturalWidth  * scale;
+            const printedH = img.naturalHeight * scale;
+            const dpi = 25.4 / scale;
+            const scalePercent = (dpi / 300) * 100;
+            return { scale, printedW, printedH, dpi, scalePercent };
+        });
+
+        const dpiQuality = computed(() => {
+            if (!scaleInfo.value) return '';
+            const dpi = scaleInfo.value.dpi;
+            if (dpi >= 200) return 'good';
+            if (dpi >= 100) return 'warn';
+            return 'bad';
+        });
+
+        const dpiLabel = computed(() => {
+            if (!scaleInfo.value) return '';
+            const dpi = scaleInfo.value.dpi;
+            if (dpi >= 300) return 'Excellente';
+            if (dpi >= 200) return 'Bonne';
+            if (dpi >= 150) return 'Correcte';
+            if (dpi >= 100) return 'Moyenne';
+            return 'Faible';
+        });
+
+        // --- Image loading ---
+        function handleFile(event) {
+            const file = event.target.files[0];
+            if (file) loadImageFile(file);
+        }
+
+        function handleDrop(event) {
+            isDragOver.value = false;
+            const file = event.dataTransfer.files[0];
+            if (file) loadImageFile(file);
+        }
+
+        function loadImageFile(file) {
+            if (currentObjectURL) URL.revokeObjectURL(currentObjectURL);
+            fileName.value = file.name;
+            currentObjectURL = URL.createObjectURL(file);
+            const img = new Image();
+            img.onload = () => {
+                image.value = img;
+                nextTick(drawPreview);
+            };
+            img.src = currentObjectURL;
+        }
+
+        // --- Preview rendering ---
+        function drawPreview() {
+            if (!previewCanvas.value || !previewArea.value || !image.value) return;
+
+            const canvas = previewCanvas.value;
+            const ctx = canvas.getContext('2d');
+            const area = previewArea.value;
+
+            const availW = area.clientWidth  - 48;
+            const availH = area.clientHeight - 48;
+
+            const GAP = 4; // visual gap between pages (CSS px)
+            const pw = pageWidth.value;
+            const ph = pageHeight.value;
+            const prW = printableWidth.value;
+            const prH = printableHeight.value;
+            const nCols = cols.value;
+            const nRows = rows.value;
+
+            // Scale so everything fits
+            const netW = availW - (nCols - 1) * GAP;
+            const netH = availH - (nRows - 1) * GAP;
+            const s = Math.min(netW / (nCols * pw), netH / (nRows * ph));
+
+            const dpr = window.devicePixelRatio || 1;
+            const cw = Math.round(nCols * pw * s + (nCols - 1) * GAP);
+            const ch = Math.round(nRows * ph * s + (nRows - 1) * GAP);
+
+            canvas.width  = cw * dpr;
+            canvas.height = ch * dpr;
+            canvas.style.width  = cw + 'px';
+            canvas.style.height = ch + 'px';
+            ctx.scale(dpr, dpr);
+
+            // Clear
+            ctx.fillStyle = '#0f0f1a';
+            ctx.fillRect(0, 0, cw, ch);
+
+            // Helper: page origin in CSS px
+            function pageOrigin(r, c) {
+                return {
+                    x: c * (pw * s + GAP),
+                    y: r * (ph * s + GAP)
+                };
+            }
+
+            // Draw pages (white background + margin shading)
+            for (let r = 0; r < nRows; r++) {
+                for (let c = 0; c < nCols; c++) {
+                    const o = pageOrigin(r, c);
+                    const w = pw * s;
+                    const h = ph * s;
+                    const mg = MARGIN * s;
+
+                    // Shadow
+                    ctx.fillStyle = 'rgba(0,0,0,0.35)';
+                    ctx.fillRect(o.x + 3, o.y + 3, w, h);
+
+                    // Page
+                    ctx.fillStyle = '#ffffff';
+                    ctx.fillRect(o.x, o.y, w, h);
+
+                    // Margins (subtle gray)
+                    ctx.fillStyle = '#f0eff4';
+                    ctx.fillRect(o.x, o.y, w, mg);              // top
+                    ctx.fillRect(o.x, o.y + h - mg, w, mg);     // bottom
+                    ctx.fillRect(o.x, o.y, mg, h);              // left
+                    ctx.fillRect(o.x + w - mg, o.y, mg, h);     // right
+                }
+            }
+
+            // Draw image tiles
+            const img = image.value;
+            const info = scaleInfo.value;
+            if (!info) return;
+
+            const imgW = info.printedW;  // mm
+            const imgH = info.printedH;
+            const tpW = totalPrintableWidth.value;
+            const tpH = totalPrintableHeight.value;
+            const offsetX = (tpW - imgW) / 2; // mm in virtual canvas
+            const offsetY = (tpH - imgH) / 2;
+
+            for (let r = 0; r < nRows; r++) {
+                for (let c = 0; c < nCols; c++) {
+                    const vcX = c * prW; // virtual canvas x (mm)
+                    const vcY = r * prH;
+
+                    // Clip region (intersection of page area and image)
+                    const clipX1 = Math.max(vcX, offsetX);
+                    const clipY1 = Math.max(vcY, offsetY);
+                    const clipX2 = Math.min(vcX + prW, offsetX + imgW);
+                    const clipY2 = Math.min(vcY + prH, offsetY + imgH);
+
+                    if (clipX1 >= clipX2 || clipY1 >= clipY2) continue;
+
+                    // Source image coords (pixels)
+                    const srcX = (clipX1 - offsetX) / info.scale;
+                    const srcY = (clipY1 - offsetY) / info.scale;
+                    const srcW = (clipX2 - clipX1) / info.scale;
+                    const srcH = (clipY2 - clipY1) / info.scale;
+
+                    // Destination on preview canvas
+                    const o = pageOrigin(r, c);
+                    const mg = MARGIN * s;
+                    const dstX = o.x + mg + (clipX1 - vcX) * s;
+                    const dstY = o.y + mg + (clipY1 - vcY) * s;
+                    const dstW = (clipX2 - clipX1) * s;
+                    const dstH = (clipY2 - clipY1) * s;
+
+                    ctx.drawImage(img, srcX, srcY, srcW, srcH, dstX, dstY, dstW, dstH);
+                }
+            }
+
+            // Dashed margin guides
+            ctx.setLineDash([3, 3]);
+            ctx.strokeStyle = 'rgba(108,99,255,0.2)';
+            ctx.lineWidth = 0.5;
+            for (let r = 0; r < nRows; r++) {
+                for (let c = 0; c < nCols; c++) {
+                    const o = pageOrigin(r, c);
+                    const mg = MARGIN * s;
+                    ctx.strokeRect(o.x + mg, o.y + mg, prW * s, prH * s);
+                }
+            }
+            ctx.setLineDash([]);
+
+            // Page borders
+            ctx.strokeStyle = '#bbbbcc';
+            ctx.lineWidth = 1;
+            for (let r = 0; r < nRows; r++) {
+                for (let c = 0; c < nCols; c++) {
+                    const o = pageOrigin(r, c);
+                    ctx.strokeRect(o.x + 0.5, o.y + 0.5, pw * s, ph * s);
+                }
+            }
+
+            // Page numbers
+            if (nCols * nRows > 1) {
+                const fontSize = Math.max(9, Math.min(16, 14 * s));
+                ctx.font = `bold ${fontSize}px system-ui`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                for (let r = 0; r < nRows; r++) {
+                    for (let c = 0; c < nCols; c++) {
+                        const o = pageOrigin(r, c);
+                        const mg = MARGIN * s;
+                        const label = `${r * nCols + c + 1}`;
+                        // Draw in top margin
+                        ctx.fillStyle = 'rgba(108,99,255,0.55)';
+                        ctx.fillText(label, o.x + pw * s / 2, o.y + mg / 2);
+                    }
+                }
+            }
+        }
+
+        // --- PDF Export ---
+        async function exportPDF() {
+            if (!image.value || exporting.value) return;
+            exporting.value = true;
+            exportProgress.value = 0;
+
+            const { jsPDF } = window.jspdf;
+
+            const orient = orientation.value === 'portrait' ? 'p' : 'l';
+            const pdf = new jsPDF({ orientation: orient, unit: 'mm', format: 'a3' });
+
+            const img = image.value;
+            const info = scaleInfo.value;
+            const prW = printableWidth.value;
+            const prH = printableHeight.value;
+            const imgW = info.printedW;
+            const imgH = info.printedH;
+            const tpW = totalPrintableWidth.value;
+            const tpH = totalPrintableHeight.value;
+            const offsetX = (tpW - imgW) / 2;
+            const offsetY = (tpH - imgH) / 2;
+
+            const totalPages = rows.value * cols.value;
+            let pageNum = 0;
+
+            for (let r = 0; r < rows.value; r++) {
+                for (let c = 0; c < cols.value; c++) {
+                    if (pageNum > 0) pdf.addPage('a3', orient);
+                    pageNum++;
+                    exportProgress.value = Math.round((pageNum / totalPages) * 90);
+
+                    // Let UI update
+                    await new Promise(resolve => setTimeout(resolve, 10));
+
+                    const vcX = c * prW;
+                    const vcY = r * prH;
+
+                    const clipX1 = Math.max(vcX, offsetX);
+                    const clipY1 = Math.max(vcY, offsetY);
+                    const clipX2 = Math.min(vcX + prW, offsetX + imgW);
+                    const clipY2 = Math.min(vcY + prH, offsetY + imgH);
+
+                    if (clipX1 >= clipX2 || clipY1 >= clipY2) continue;
+
+                    // Source pixels
+                    const srcX = (clipX1 - offsetX) / info.scale;
+                    const srcY = (clipY1 - offsetY) / info.scale;
+                    const srcW = (clipX2 - clipX1) / info.scale;
+                    const srcH = (clipY2 - clipY1) / info.scale;
+
+                    // Create tile canvas
+                    const tileCanvas = document.createElement('canvas');
+                    tileCanvas.width  = Math.round(srcW);
+                    tileCanvas.height = Math.round(srcH);
+                    const tCtx = tileCanvas.getContext('2d');
+                    tCtx.fillStyle = '#ffffff';
+                    tCtx.fillRect(0, 0, tileCanvas.width, tileCanvas.height);
+                    tCtx.drawImage(img,
+                        Math.round(srcX), Math.round(srcY),
+                        Math.round(srcW), Math.round(srcH),
+                        0, 0, tileCanvas.width, tileCanvas.height
+                    );
+
+                    const dataUrl = tileCanvas.toDataURL('image/jpeg', 0.92);
+
+                    // Position on PDF page (mm)
+                    const pdfX = MARGIN + (clipX1 - vcX);
+                    const pdfY = MARGIN + (clipY1 - vcY);
+                    const pdfW = clipX2 - clipX1;
+                    const pdfH = clipY2 - clipY1;
+
+                    pdf.addImage(dataUrl, 'JPEG', pdfX, pdfY, pdfW, pdfH);
+                }
+            }
+
+            exportProgress.value = 100;
+            const baseName = fileName.value.replace(/\.[^/.]+$/, '') || 'poster';
+            pdf.save(`${baseName}_poster_${cols.value}x${rows.value}.pdf`);
+
+            exporting.value = false;
+            exportProgress.value = 0;
+        }
+
+        // --- Watchers ---
+        watch([orientation, cols, rows, image], () => {
+            nextTick(drawPreview);
+        });
+
+        // --- Resize ---
+        let resizeObserver = null;
+        onMounted(() => {
+            if (previewArea.value) {
+                resizeObserver = new ResizeObserver(() => drawPreview());
+                resizeObserver.observe(previewArea.value);
+            }
+        });
+        onBeforeUnmount(() => {
+            if (resizeObserver) resizeObserver.disconnect();
+        });
+
+        return {
+            image, fileName, orientation, cols, rows,
+            isDragOver, exporting, exportProgress,
+            previewCanvas, previewArea, fileInput,
+            pageWidth, pageHeight,
+            scaleInfo, dpiQuality, dpiLabel,
+            handleFile, handleDrop, exportPDF
+        };
+    }
+}).mount('#app');
+</script>
+</body>
+</html>
